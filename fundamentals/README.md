@@ -2,7 +2,7 @@ A simple program for getting basic metrics on a company. Typically as I look thr
 
 It looks like this:
 
-``
+```
 % ./fundamentals -n USCR -P 985.19m -p 63.5 -q 4 -e 0.59 -e -0.38 -a 945402t -g 133271t -i 130973t -l 756573t
 
 Company                  USCR
@@ -29,4 +29,4 @@ STD/E                    0.024
 LTD/E                    0.635
 STD/D                    0.037
 LTD/D                    0.963
-``
+```
