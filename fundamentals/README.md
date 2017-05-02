@@ -25,7 +25,7 @@ EV/EBITDA                11.993
 P/E                      604.762
 P/B                      -13.064
 Dividend yield           0.000
-Dividend coverage        inf
+Dividend coverage        1.000
 Current ratio            1.264
 Quick ratio              1.109
 D/E                      -10.032

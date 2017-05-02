@@ -303,17 +303,15 @@ compute_metrics(struct financials *f, struct metrics *m) {
     /* Dividend coverage */
     if (f->earn_entries && f->div_entries) {
         m->div_cover = 1;
-        if (dsum(f->earn, f->earn_entries) > 0) {
-            int n = MIN(f->earn_entries, f->div_entries);
+        int n = MIN(f->earn_entries, f->div_entries);
+        if (dsum(f->div, n) > 0)
             m->div_cover = dsum(f->earn, n)/dsum(f->div, n);
-        }
     }
     if (f->earn_ps_entries && f->div_ps_entries) {
         m->div_cover = 1;
-        if (dsum(f->earn_ps, f->earn_ps_entries) > 0) {
-            int n = MIN(f->earn_ps_entries, f->div_ps_entries);
+        int n = MIN(f->earn_ps_entries, f->div_ps_entries);
+        if (dsum(f->div_ps, n) > 0)
             m->div_cover = dsum(f->earn_ps, n)/dsum(f->div_ps, n);
-        }
     }
     // XXX TODO: Make this payout coverage?
 
