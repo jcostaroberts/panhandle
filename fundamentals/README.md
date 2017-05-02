@@ -3,7 +3,8 @@ A simple program for getting basic metrics on a company. Typically as I look thr
 It looks like this:
 
 ```
-% ./fundamentals -n USCR -P 985.19m -p 63.5 -q 4 -e 0.59 -e -0.38 -a 945402t -g 133271t -i 130973t -l 756573t
+% ./fundamentals -n USCR -P 985.19m -p 63.5 -q 4 -e 0.59 -e -0.38\
+> -a 945402t -g 133271t -i 130973t -l 756573t
 
 Company                  USCR
 Market cap               $985.19m
@@ -11,7 +12,10 @@ P/E                      604.762
 P/B                      -13.064
 D/E                      -10.032
 
-% ./fundamentals -n USCR -P 985.19m -p 63.5 -d 0 -d 0 -q 4 -e 0.59 -e -0.38 -a 945402t -g 133271t -i 130973t -l 756573t -A 341289t -L 270006t -I 41979t -t 16654t -T 432664t -r 54852t -R 0 -o 58438t -c 75774t -C 0 -m 0
+% ./fundamentals -n USCR -P 985.19m -p 63.5 -d 0 -d 0 -q 4 -e 0.59\
+> -e -0.38 -a 945402t -g 133271t -i 130973t -l 756573t -A 341289t\
+> -L 270006t -I 41979t -t 16654t -T 432664t -r 54852t -R 0 -o 58438t\
+> -c 75774t -C 0 -m 0
 
 Company                  USCR
 Market cap               $985.19m
