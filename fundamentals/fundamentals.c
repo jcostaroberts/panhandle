@@ -29,17 +29,16 @@ static struct argp_option options[] = {
     {"reporting-period", 'q', "NUM 1-4", 0, "Reporting period"},
     {"earn", 'e', "NUM", 0, "One period of earnings"},
     {"earn-ps", 'E', "NUM", 0, "One period of per-share earnings"},
-    {"assets", 'a', "NUM", 0, "Assets"},
-    {"current-assets", 'A', "NUM", 0, "Current assets"},
+    {"assets", 'A', "NUM", 0, "Assets"},
+    {"current-assets", 'a', "NUM", 0, "Current assets"},
     {"intangibles", 'i', "NUM", 0, "Intangibles"},
     {"goodwill", 'g', "NUM", 0, "Goodwill"},
-    {"liabilities", 'l', "NUM", 0, "Liabilities"},
-    {"current-liabilities", 'L', "NUM", 0, "Current liabilities"},
+    {"liabilities", 'L', "NUM", 0, "Liabilities"},
+    {"current-liabilities", 'l', "NUM", 0, "Current liabilities"},
     {"std", 't', "NUM", 0, "Short-term debt"},
     {"ltd", 'T', "NUM", 0, "Long-term debt"},
     {"inventories", 'I', "NUM", 0, "Inventories"},
     {"cash", 'c', "NUM", 0, "Cash"},
-    {"cash-equivalents", 'C', "NUM", 0, "Cash equivalents"},
     {"minority-interest", 'm', "NUM", 0, "Minority interest"},
     {"op_profit", 'o', "NUM", 0, "Operating profit"},
     {"depreciation", 'r', "NUM", 0, "Depreciation"},
@@ -77,7 +76,6 @@ struct financials {
     double curr_liabilities;
     double inventories;
     double cash;
-    double cash_equiv;
     double minority_int;
 };
 
@@ -109,12 +107,15 @@ mstrtod(char *s) {
 
     switch(m) {
         case 't':
+        case 'T':
             f *= 1e3;
             break;
         case 'm':
+        case 'M':
             f *= 1e6;
             break;
         case 'b':
+        case 'B':
             f *= 1e9;
             break;
         default:
@@ -192,10 +193,10 @@ parse_opt(int key, char *arg, struct argp_state *state) {
             if (f->amortization_entries < MAX_PERIODS)
                 f->amortization[f->amortization_entries++] = mstrtod(arg);
             break;
-        case 'a':
+        case 'A':
             f->assets = mstrtod(arg);
             break;
-        case 'A':
+        case 'a':
             f->curr_assets = mstrtod(arg);
             break;
         case 'i':
@@ -207,10 +208,10 @@ parse_opt(int key, char *arg, struct argp_state *state) {
         case 'g':
             f->goodwill = mstrtod(arg);
             break;
-        case 'l':
+        case 'L':
             f->liabilities = mstrtod(arg);
             break;
-        case 'L':
+        case 'l':
             f->curr_liabilities = mstrtod(arg);
             break;
         case 't':
@@ -221,9 +222,6 @@ parse_opt(int key, char *arg, struct argp_state *state) {
             break;
         case 'c':
             f->cash = mstrtod(arg);
-            break;
-        case 'C':
-            f->cash_equiv = mstrtod(arg);
             break;
         case 'm':
             f->minority_int = mstrtod(arg);
@@ -239,6 +237,25 @@ parse_opt(int key, char *arg, struct argp_state *state) {
 }
 
 static struct argp argp = {options, parse_opt};
+
+void
+check(int ok, char *message) {
+    if (ok) return;
+    printf("%s\n", message);
+    exit(-1);
+}
+
+void
+check_args(struct financials *f) {
+    check(f->period >= 0 && f->period <= 4,
+          "Reporting period must be between 1 and 4");
+    check(f->curr_liabilities < f->liabilities,
+          "Current liabilities cannot exceed total liabilities");
+    check(f->curr_assets < f->assets,
+          "Current assets cannot exceed total assets");
+    check((f->stdebt + f->ltdebt) <= f->liabilities,
+          "Long-term debt and short-term debt cannot exceed total liabilities");
+}
 
 /* Sum of an array of doubles */
 double
@@ -266,9 +283,8 @@ void
 compute_metrics(struct financials *f, struct metrics *m) {
     /* EV */
     if (DSET(f->mktcap) && DSET(f->stdebt) && DSET(f->ltdebt) &&
-        DSET(f->minority_int) && DSET(f->cash) && DSET(f->cash_equiv))
-        m->ev = f->mktcap + f->stdebt + f->ltdebt + f->minority_int - 
-                (f->cash + f->cash_equiv);
+        DSET(f->minority_int) && DSET(f->cash))
+        m->ev = f->mktcap + f->stdebt + f->ltdebt + f->minority_int - f->cash;
 
     /* EBITDA */
     if (f->op_profit_entries && f->depreciation_entries &&
@@ -394,10 +410,11 @@ int
 main(int argc, char **argv) {
     struct financials financials = {"", "", UNS, UNS, 0, {}, 0, {}, 0, {}, 0,
                                     {}, 0, {}, 0, {}, 0, {}, 0, UNS, UNS, UNS,
-                                    UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS};
+                                    UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS};
     struct metrics metrics = {UNS, UNS, UNS, UNS, UNS, UNS, UNS,
                               UNS, UNS, UNS, UNS, UNS, UNS, UNS};
     argp_parse(&argp, argc, argv, 0, 0, &financials);
+    check_args(&financials);
     compute_metrics(&financials, &metrics);
     show_fundamentals(&financials, &metrics);
 }
