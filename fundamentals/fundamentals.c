@@ -349,13 +349,17 @@ compute_metrics(struct financials *f, struct metrics *m) {
 
     /* STD/E */
     if (DSET(f->stdebt) && DSET(f->assets) &&
-        DSET(f->intangibles) && DSET(f->goodwill))
-        m->std_to_e = f->stdebt/(f->assets - f->intangibles - f->goodwill);
+        DSET(f->intangibles) && DSET(f->goodwill)) {
+        double eq = f->assets - f->intangibles - f->goodwill - f->liabilities;
+        m->std_to_e = f->stdebt/eq;
+    }
 
     /* LTD/E */
     if (DSET(f->ltdebt) && DSET(f->assets) &&
-        DSET(f->intangibles) && DSET(f->goodwill))
-        m->ltd_to_e = f->ltdebt/(f->assets - f->intangibles - f->goodwill);
+        DSET(f->intangibles) && DSET(f->goodwill)) {
+        double eq = f->assets - f->intangibles - f->goodwill - f->liabilities;
+        m->ltd_to_e = f->ltdebt/eq;
+    }
 
     /* STD/D */
     /* LTD/D */
