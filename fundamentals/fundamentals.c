@@ -85,11 +85,13 @@ struct metrics {
     double ev_to_ebitda;
     double p_to_e;
     double p_to_b;
+    double p_to_c;
     double div_yield;
     double div_cover;
     double current;
     double quick;
     double d_to_e;
+    double d_to_ebitda;
     double std_to_e;
     double ltd_to_e;
     double std_to_d;
@@ -310,6 +312,10 @@ compute_metrics(struct financials *f, struct metrics *m) {
         m->p_to_b = f->mktcap/b;
     }
 
+    /* P/C */
+    if (DSET(f->mktcap) && DSET(f->cash))
+        m->p_to_c = f->mktcap/f->cash;
+
     /* Dividend yield */
     if (DSET(f->mktcap) && f->div_entries && f->period)
         m->div_yield = davg_yr(f->div, f->div_entries, f->period)/f->mktcap;
@@ -346,6 +352,10 @@ compute_metrics(struct financials *f, struct metrics *m) {
         double eq = f->assets - f->intangibles - f->goodwill - f->liabilities;
         m->d_to_e = f->liabilities/eq;
     }
+
+    /* D/EBITDA */
+    if (DSET(f->liabilities) && DSET(m->ebitda))
+        m->d_to_ebitda = f->liabilities/m->ebitda;
 
     /* STD/E */
     if (DSET(f->stdebt) && DSET(f->assets) &&
@@ -388,6 +398,8 @@ show_fundamentals(struct financials *f, struct metrics *m) {
         printf("%-25s%-20.3f\n", "P/E", m->p_to_e);
     if (DSET(m->p_to_b))
         printf("%-25s%-20.3f\n", "P/B", m->p_to_b);
+    if (DSET(m->p_to_c))
+        printf("%-25s%-20.3f\n", "P/C", m->p_to_c);
     if (DSET(m->div_yield))
         printf("%-25s%-20.3f\n", "Dividend yield", m->div_yield);
     if (DSET(m->div_cover))
@@ -398,6 +410,8 @@ show_fundamentals(struct financials *f, struct metrics *m) {
         printf("%-25s%-20.3f\n", "Quick ratio", m->quick);
     if (DSET(m->d_to_e))
         printf("%-25s%-20.3f\n", "D/E", m->d_to_e);
+    if (DSET(m->d_to_ebitda))
+        printf("%-25s%-20.3f\n", "D/EBITDA", m->d_to_ebitda);
     if (DSET(m->std_to_e))
         printf("%-25s%-20.3f\n", "STD/E", m->std_to_e);
     if (DSET(m->ltd_to_e))
@@ -415,8 +429,8 @@ main(int argc, char **argv) {
     struct financials financials = {"", "", UNS, UNS, 0, {}, 0, {}, 0, {}, 0,
                                     {}, 0, {}, 0, {}, 0, {}, 0, UNS, UNS, UNS,
                                     UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS};
-    struct metrics metrics = {UNS, UNS, UNS, UNS, UNS, UNS, UNS,
-                              UNS, UNS, UNS, UNS, UNS, UNS, UNS};
+    struct metrics metrics = {UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS,
+                              UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS};
     argp_parse(&argp, argc, argv, 0, 0, &financials);
     check_args(&financials);
     compute_metrics(&financials, &metrics);
