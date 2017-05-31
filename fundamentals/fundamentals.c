@@ -39,6 +39,7 @@ static struct argp_option options[] = {
     {"ltd", 'T', "NUM", 0, "Long-term debt"},
     {"inventories", 'I', "NUM", 0, "Inventories"},
     {"cash", 'c', "NUM", 0, "Cash"},
+    {"ebitda", 'b', "NUM", 0, "EBITDA"},
     {"minority-interest", 'm', "NUM", 0, "Minority interest"},
     {"op_profit", 'o', "NUM", 0, "Operating profit"},
     {"depreciation", 'r', "NUM", 0, "Depreciation"},
@@ -66,6 +67,8 @@ struct financials {
     U16 depreciation_entries;
     double amortization[MAX_PERIODS];
     U16 amortization_entries;
+    double ebitda[MAX_PERIODS];
+    U16 ebitda_entries;
     double assets;
     double intangibles;
     double goodwill;
@@ -82,16 +85,22 @@ struct financials {
 struct metrics {
     double ev;
     double ebitda;
+    U16 ebitda_q;
     double ev_to_ebitda;
+    U16 ev_to_ebitda_q;
     double p_to_e;
+    U16 p_to_e_q;
     double p_to_b;
     double p_to_c;
     double div_yield;
+    U16 div_yield_q;
     double div_cover;
+    U16 div_cover_q;
     double current;
     double quick;
     double d_to_e;
     double d_to_ebitda;
+    U16 d_to_ebitda_q;
     double std_to_e;
     double ltd_to_e;
     double std_to_d;
@@ -145,8 +154,16 @@ dtomstr(double f, char *s) {
         g /= 1e9;
     } else
         return -1;
-    snprintf(s, MAX_STRLEN, "%.2f%c", g, c);
+    snprintf(s, MAX_STRLEN, "%.3f%c", g, c);
     return 0;
+}
+
+/* For a metric that was produced over a period of time,
+ * create a string that specifies the relevant period. */
+char *
+dblq_s(char *s, double f, U16 q) {
+    snprintf(s, MAX_STRLEN, "%.3f (%uQ)", f, q);
+    return s;
 }
 
 static error_t
@@ -183,6 +200,9 @@ parse_opt(int key, char *arg, struct argp_state *state) {
             if (f->earn_entries < MAX_PERIODS)
                 f->earn[f->earn_entries++] = mstrtod(arg);
             break;
+        case 'b':
+            if (f->ebitda_entries < MAX_PERIODS)
+                f->ebitda[f->ebitda_entries++] = mstrtod(arg);
         case 'o':
             if (f->op_profit_entries < MAX_PERIODS)
                 f->op_profit[f->op_profit_entries++] = mstrtod(arg);
@@ -290,20 +310,33 @@ compute_metrics(struct financials *f, struct metrics *m) {
 
     /* EBITDA */
     if (f->op_profit_entries && f->depreciation_entries &&
-        f->amortization_entries && f->period)
+        f->amortization_entries && f->period) {
         m->ebitda = davg_yr(f->op_profit, f->op_profit_entries, f->period) +
                     davg_yr(f->depreciation, f->depreciation_entries, f->period) +
                     davg_yr(f->amortization, f->amortization_entries, f->period);
+        m->ebitda_q = f->period*MIN(f->op_profit_entries, MIN(f->depreciation_entries,
+                                                              f->amortization_entries));
+    }
+    if (f->ebitda_entries && f->period) {
+        m->ebitda = davg_yr(f->ebitda, f->ebitda_entries, f->period);
+        m->ebitda_q = f->period*f->ebitda_entries;
+    }
 
     /* EV/EBITDA */
-    if (DSET(m->ev) && DSET(m->ebitda))
+    if (DSET(m->ev) && DSET(m->ebitda)) {
         m->ev_to_ebitda = m->ev/m->ebitda;
+        m->ev_to_ebitda_q = m->ebitda_q;
+    }
 
     /* P/E */
-    if (DSET(f->mktcap) && f->earn_entries && f->period)
+    if (DSET(f->mktcap) && f->earn_entries && f->period) {
         m->p_to_e = f->mktcap/davg_yr(f->earn, f->earn_entries, f->period);
-    if (DSET(f->price) && f->earn_ps_entries)
+        m->p_to_e_q = f->period*f->earn_entries;
+    }
+    if (DSET(f->price) && f->earn_ps_entries) {
         m->p_to_e = f->price/davg_yr(f->earn_ps, f->earn_ps_entries, f->period);
+        m->p_to_e_q = f->period*f->earn_ps_entries;
+    }
 
     /* P/B */
     if (DSET(f->mktcap) && DSET(f->assets) && DSET(f->intangibles) &&
@@ -317,10 +350,14 @@ compute_metrics(struct financials *f, struct metrics *m) {
         m->p_to_c = f->mktcap/f->cash;
 
     /* Dividend yield */
-    if (DSET(f->mktcap) && f->div_entries && f->period)
+    if (DSET(f->mktcap) && f->div_entries && f->period) {
         m->div_yield = davg_yr(f->div, f->div_entries, f->period)/f->mktcap;
-    if (DSET(f->price) && f->div_ps_entries && f->period)
+        m->div_yield_q = f->period*f->div_entries;
+    }
+    if (DSET(f->price) && f->div_ps_entries && f->period) {
         m->div_yield = davg_yr(f->div_ps, f->div_ps_entries, f->period)/f->price;
+        m->div_yield_q = f->period*f->div_ps_entries;
+    }
 
     /* Dividend coverage */
     if (f->earn_entries && f->div_entries) {
@@ -328,12 +365,14 @@ compute_metrics(struct financials *f, struct metrics *m) {
         int n = MIN(f->earn_entries, f->div_entries);
         if (dsum(f->div, n) > 0)
             m->div_cover = dsum(f->earn, n)/dsum(f->div, n);
+        m->div_cover_q = MIN(m->p_to_e_q, m->div_yield_q);
     }
     if (f->earn_ps_entries && f->div_ps_entries) {
         m->div_cover = 1;
         int n = MIN(f->earn_ps_entries, f->div_ps_entries);
         if (dsum(f->div_ps, n) > 0)
             m->div_cover = dsum(f->earn_ps, n)/dsum(f->div_ps, n);
+        m->div_cover_q = MIN(m->p_to_e_q, m->div_yield_q);
     }
     // XXX TODO: Make this payout coverage?
 
@@ -354,8 +393,10 @@ compute_metrics(struct financials *f, struct metrics *m) {
     }
 
     /* D/EBITDA */
-    if (DSET(f->liabilities) && DSET(m->ebitda))
+    if (DSET(f->liabilities) && DSET(m->ebitda)) {
         m->d_to_ebitda = f->liabilities/m->ebitda;
+        m->d_to_ebitda_q = m->ebitda_q;
+    }
 
     /* STD/E */
     if (DSET(f->stdebt) && DSET(f->assets) &&
@@ -384,26 +425,36 @@ show_fundamentals(struct financials *f, struct metrics *m) {
     char buf[MAX_STRLEN+1];
     printf("\n");
 
+    // XXX TODO: return on capital, return on equity (NOTE: this is tricky because it also requires capital over time)
+    //  - should I just give all balance sheet figures a notion of time, too?
+    //  - maybe use a struct avdbl{double v; U16 q;}; and macros V(x) (x->v) and Q(x) (x->q)
+    //  - put all metrics through the same treatment to get string
+    //      - i.e., create a print_metric(name,avdbl) function that does all the printing junk
+    // XXX TODO: operating cash flow, EBITDA, net income, EBITDA-capex
     if (strlen(f->name))
         printf("%-25s%-20s\n", "Company", f->name);
     if (strlen(f->mktcap_str))
         printf("%-25s$%-20s\n", "Market cap", f->mktcap_str);
     if (DSET(m->ev) && !dtomstr(m->ev, buf))
-        printf("%-25s$%-20s\n", "EV", &buf[0]);
+        printf("%-25s$%-20s\n", "EV", buf);
     if (DSET(m->ebitda) && !dtomstr(m->ebitda, buf))
-        printf("%-25s$%-20s\n", "EBITDA", &buf[0]);
+        printf("%-25s$%-19s%uQ\n", "EBITDA", buf, m->ebitda_q);
     if (DSET(m->ev) && DSET(m->ebitda))
-        printf("%-25s%-20.3f\n", "EV/EBITDA", m->ev_to_ebitda);
+        printf("%-25s%-20.3f%uQ\n", "EV/EBITDA",
+               m->ev_to_ebitda, m->ev_to_ebitda_q);
     if (DSET(m->p_to_e))
-        printf("%-25s%-20.3f\n", "P/E", m->p_to_e);
+        printf("%-25s%-20.3f%uQ\n", "P/E",
+               m->p_to_e, m->p_to_e_q);
     if (DSET(m->p_to_b))
         printf("%-25s%-20.3f\n", "P/B", m->p_to_b);
     if (DSET(m->p_to_c))
         printf("%-25s%-20.3f\n", "P/C", m->p_to_c);
     if (DSET(m->div_yield))
-        printf("%-25s%-20.3f\n", "Dividend yield", m->div_yield);
+        printf("%-25s%-20.3f%uQ\n", "Dividend yield",
+               m->div_yield, m->div_yield_q);
     if (DSET(m->div_cover))
-        printf("%-25s%-20.3f\n", "Dividend coverage", m->div_cover);
+        printf("%-25s%-20.3f%uQ\n", "Dividend coverage",
+               m->div_cover, m->div_cover_q);
     if (DSET(m->current))
         printf("%-25s%-20.3f\n", "Current ratio", m->current);
     if (DSET(m->quick))
@@ -411,7 +462,8 @@ show_fundamentals(struct financials *f, struct metrics *m) {
     if (DSET(m->d_to_e))
         printf("%-25s%-20.3f\n", "D/E", m->d_to_e);
     if (DSET(m->d_to_ebitda))
-        printf("%-25s%-20.3f\n", "D/EBITDA", m->d_to_ebitda);
+        printf("%-25s%-20.3f%uQ\n", "D/EBITDA",
+               m->d_to_ebitda, m->d_to_ebitda_q);
     if (DSET(m->std_to_e))
         printf("%-25s%-20.3f\n", "STD/E", m->std_to_e);
     if (DSET(m->ltd_to_e))
@@ -427,10 +479,10 @@ show_fundamentals(struct financials *f, struct metrics *m) {
 int
 main(int argc, char **argv) {
     struct financials financials = {"", "", UNS, UNS, 0, {}, 0, {}, 0, {}, 0,
-                                    {}, 0, {}, 0, {}, 0, {}, 0, UNS, UNS, UNS,
-                                    UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS};
-    struct metrics metrics = {UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS,
-                              UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS};
+                                    {}, 0, {}, 0, {}, 0, {}, 0, {}, 0, UNS, UNS,
+                                    UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS};
+    struct metrics metrics = {UNS, UNS, 0, UNS, 0, UNS, 0, UNS, UNS, UNS, 0, UNS,
+                              0, UNS, UNS, UNS, UNS, 0, UNS, UNS, UNS, UNS};
     argp_parse(&argp, argc, argv, 0, 0, &financials);
     check_args(&financials);
     compute_metrics(&financials, &metrics);
