@@ -4,21 +4,30 @@
 #include <string.h>
 
 #define U16 unsigned short
-
+#define UNS DBL_MIN
 #define MAX_STRLEN 30
 #define MAX_PERIODS 12
 
-#define UNS DBL_MIN /* Default double value */
-#define DSET(d) (d != UNS)
-#define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
+#define ZERO(x) (x == 0.0)
+
+/* macros for setting/getting input_series types */
+#define ISET(x,y) if ((x).e < MAX_PERIODS) (x).v[(x).e++] = y;
+#define IV(x,i) ((x).v[i])
+#define IV0(x) ((x).v[0]) // NOTE: Assumes the first argument is most recent
+#define IE(x) ((x).e)
+#define QTR(f,e) ((f)->period*IE(e))
+
+/* macros for setting/getting metric types */
+#define MSET(X,V,Q) {(X).v=V; (X).q=Q; (X).set=1;}
+#define MV(x) ((x).v)
+#define MQ(x) ((x).q)
+#define MBLANK(x) ((x).set == 0)
 
 /* To add a new metric: (1) add a field to the metrics struct; (2) add
- * the computation to compute_metrics; (3) initialize it in main();
- * (4) add the metric to the show routine.
+ * the computation to compute_metrics; (3) add the metric to the show routine.
  *
  * To add a new input: (1) add a flag to the argp_option array; (2) add
- * a field to the financials struct; (3) parse the option in parse_opt;
- * (4) initialize the field in main(). */
+ * a field to the financials struct; (3) parse the option in parse_opt; */
 
 static struct argp_option options[] = {
     {"name", 'n', "NAME", 0, "Company name"},
@@ -39,73 +48,79 @@ static struct argp_option options[] = {
     {"ltd", 'T', "NUM", 0, "Long-term debt"},
     {"inventories", 'I', "NUM", 0, "Inventories"},
     {"cash", 'c', "NUM", 0, "Cash"},
-    {"ebitda", 'b', "NUM", 0, "EBITDA"},
+    {"cfo", 'C', "NUM", 0, "Cash flow from operating activities"},
     {"minority-interest", 'm', "NUM", 0, "Minority interest"},
-    {"op_profit", 'o', "NUM", 0, "Operating profit"},
-    {"depreciation", 'r', "NUM", 0, "Depreciation"},
-    {"amortization", 'R', "NUM", 0, "Amortization"},
+    {"ebitda", 'b', "NUM", 0, "EBITDA"},
+    {"ebit", 'B', "NUM", 0, "EBIT/Operating profit"},
+    {"d-and-a", 'r', "NUM", 0, "Depreciation and amortization"},
+    {"capex", 'x', "NUM", 0, "Capital expenditure"},
     {0}
 };
 
-struct financials {
+typedef struct input_series_dbl {
+    double v[MAX_PERIODS]; /* entries */
+    U16 e;                 /* number of entries */
+} in_series;
+
+typedef struct financials {
     char name[MAX_STRLEN+1];
     char mktcap_str[MAX_STRLEN+1];
     double price;
     double mktcap;
     U16 period;
-    double div_ps[MAX_PERIODS];
-    U16 div_ps_entries;
-    double div[MAX_PERIODS];
-    U16 div_entries;
-    double earn_ps[MAX_PERIODS];
-    U16 earn_ps_entries;
-    double earn[MAX_PERIODS];
-    U16 earn_entries;
-    double op_profit[MAX_PERIODS];
-    U16 op_profit_entries;
-    double depreciation[MAX_PERIODS];
-    U16 depreciation_entries;
-    double amortization[MAX_PERIODS];
-    U16 amortization_entries;
-    double ebitda[MAX_PERIODS];
-    U16 ebitda_entries;
-    double assets;
-    double intangibles;
-    double goodwill;
-    double liabilities;
-    double stdebt;
-    double ltdebt;
-    double curr_assets;
-    double curr_liabilities;
-    double inventories;
-    double cash;
-    double minority_int;
-};
+    in_series div_ps;
+    in_series div;
+    in_series earn_ps;
+    in_series earn;
+    in_series cfo;
+    in_series ebit;
+    in_series d_and_a;
+    in_series capex;
+    in_series ebitda;
+    in_series assets;
+    in_series intangibles;
+    in_series goodwill;
+    in_series liabilities;
+    in_series stdebt;
+    in_series ltdebt;
+    in_series curr_assets;
+    in_series curr_liabilities;
+    in_series inventories;
+    in_series cash;
+    in_series minority_int;
+} financials;
 
-struct metrics {
+typedef struct metric_dbl {
+    double v; /* metric value */
+    U16 q;    /* number of quarters used to compute this metric */
+    U16 set;    /* has this structure had its value set? */
+} metric;
+
+typedef struct metrics {
     double ev;
-    double ebitda;
-    U16 ebitda_q;
-    double ev_to_ebitda;
-    U16 ev_to_ebitda_q;
-    double p_to_e;
-    U16 p_to_e_q;
-    double p_to_b;
-    double p_to_c;
-    double div_yield;
-    U16 div_yield_q;
-    double div_cover;
-    U16 div_cover_q;
-    double current;
-    double quick;
-    double d_to_e;
-    double d_to_ebitda;
-    U16 d_to_ebitda_q;
-    double std_to_e;
-    double ltd_to_e;
-    double std_to_d;
-    double ltd_to_d;
-};
+    metric earnings;
+    metric ebitda;
+    metric emc; // EBITDA minus capex
+    metric cfo; // Cash flow from operating activities
+    metric ev_to_ebitda;
+    metric p_to_e;
+    metric p_to_emc;
+    metric p_to_cfo;
+    metric book;
+    metric p_to_b;
+    metric p_to_c;
+    metric div_yield;
+    metric div_cover;
+    metric roc; // Pre-tax return on capital
+    metric roe; // Return on equity
+    metric current;
+    metric quick;
+    metric d_to_e;
+    metric l_to_e;
+    metric l_to_ebitda;
+    metric std_to_d;
+    metric ltd_to_d;
+} metrics;
 
 /* Convert a string matching <float>[t|m|b] to a double. So,
  * e.g., 123.4m becomes 123400000.0 and -1.3t becomes -1300.0.
@@ -158,17 +173,9 @@ dtomstr(double f, char *s) {
     return 0;
 }
 
-/* For a metric that was produced over a period of time,
- * create a string that specifies the relevant period. */
-char *
-dblq_s(char *s, double f, U16 q) {
-    snprintf(s, MAX_STRLEN, "%.3f (%uQ)", f, q);
-    return s;
-}
-
 static error_t
 parse_opt(int key, char *arg, struct argp_state *state) {
-    struct financials *f = state->input;
+    financials *f = state->input;
 
     switch(key) {
         case 'n':
@@ -182,79 +189,73 @@ parse_opt(int key, char *arg, struct argp_state *state) {
             f->mktcap = mstrtod(arg);
             break;
         case 'd':
-            if (f->div_ps_entries < MAX_PERIODS)
-                f->div_ps[f->div_ps_entries++] = mstrtod(arg);
+            ISET(f->div_ps, mstrtod(arg));
             break;
         case 'D':
-            if (f->div_entries < MAX_PERIODS)
-                f->div[f->div_entries++] = mstrtod(arg);
+            ISET(f->div, mstrtod(arg));
             break;
         case 'q':
             f->period = (U16)strtoul(arg, (&arg+strlen(arg)), 10);
             break;
         case 'e':
-            if (f->earn_ps_entries < MAX_PERIODS)
-                f->earn_ps[f->earn_ps_entries++] = mstrtod(arg);
+            ISET(f->earn_ps, mstrtod(arg));
             break;
         case 'E':
-            if (f->earn_entries < MAX_PERIODS)
-                f->earn[f->earn_entries++] = mstrtod(arg);
+            ISET(f->earn, mstrtod(arg));
             break;
         case 'b':
-            if (f->ebitda_entries < MAX_PERIODS)
-                f->ebitda[f->ebitda_entries++] = mstrtod(arg);
-        case 'o':
-            if (f->op_profit_entries < MAX_PERIODS)
-                f->op_profit[f->op_profit_entries++] = mstrtod(arg);
+            ISET(f->ebitda, mstrtod(arg));
+            break;
+        case 'B':
+            ISET(f->ebit, mstrtod(arg));
             break;
         case 'r':
-            if (f->depreciation_entries < MAX_PERIODS)
-                f->depreciation[f->depreciation_entries++] = mstrtod(arg);
-            break;
-        case 'R':
-            if (f->amortization_entries < MAX_PERIODS)
-                f->amortization[f->amortization_entries++] = mstrtod(arg);
+            ISET(f->d_and_a, mstrtod(arg));
             break;
         case 'A':
-            f->assets = mstrtod(arg);
+            ISET(f->assets, mstrtod(arg));
             break;
         case 'a':
-            f->curr_assets = mstrtod(arg);
+            ISET(f->curr_assets, mstrtod(arg));
             break;
         case 'i':
-            f->intangibles = mstrtod(arg);
+            ISET(f->intangibles, mstrtod(arg));
             break;
         case 'I':
-            f->inventories = mstrtod(arg);
+            ISET(f->inventories, mstrtod(arg));
             break;
         case 'g':
-            f->goodwill = mstrtod(arg);
+            ISET(f->goodwill, mstrtod(arg));
             break;
         case 'L':
-            f->liabilities = mstrtod(arg);
+            ISET(f->liabilities, mstrtod(arg));
             break;
         case 'l':
-            f->curr_liabilities = mstrtod(arg);
+            ISET(f->curr_liabilities, mstrtod(arg));
             break;
         case 't':
-            f->stdebt = mstrtod(arg);
+            ISET(f->stdebt, mstrtod(arg));
             break;
         case 'T':
-            f->ltdebt = mstrtod(arg);
+            ISET(f->ltdebt, mstrtod(arg));
             break;
         case 'c':
-            f->cash = mstrtod(arg);
+            ISET(f->cash, mstrtod(arg));
+            break;
+        case 'C':
+            ISET(f->cfo, mstrtod(arg));
+            break;
+        case 'x':
+            ISET(f->capex, mstrtod(arg));
             break;
         case 'm':
-            f->minority_int = mstrtod(arg);
+            ISET(f->minority_int, mstrtod(arg));
             break;
         case ARGP_KEY_END:
-            /* XXX: Could add argument checking here */
             break;
         default:
             return ARGP_ERR_UNKNOWN;
     }
-
     return 0;
 }
 
@@ -268,223 +269,299 @@ check(int ok, char *message) {
 }
 
 void
-check_args(struct financials *f) {
+check_args(financials *f) {
     check(f->period >= 0 && f->period <= 4,
           "Reporting period must be between 1 and 4");
-    check(f->curr_liabilities < f->liabilities,
+    // XXX TODO: check for all periods instead of just the first
+    check(IV0(f->curr_liabilities) <= IV0(f->liabilities),
           "Current liabilities cannot exceed total liabilities");
-    check(f->curr_assets < f->assets,
+    check(IV0(f->curr_assets) < IV0(f->assets),
           "Current assets cannot exceed total assets");
-    check((f->stdebt + f->ltdebt) <= f->liabilities,
+    check((IV0(f->stdebt) + IV0(f->ltdebt)) <= IV0(f->liabilities),
           "Long-term debt and short-term debt cannot exceed total liabilities");
 }
 
-/* Sum of an array of doubles */
-double
-dsum(double a[], U16 n) {
+double /* Sum of an array of doubles */
+dsum(in_series *is) {
     double s = 0;
-    for (int i = 0; i < n; ++i)
-        s += a[i];
+    for (int i = 0; i < is->e; ++i)
+        s += is->v[i];
     return s;
 }
 
-/* Average of an array of doubles */
-double
-davg(double a[], U16 n) {
-    return dsum(a, n)/n;
+double /* Average of an array of doubles */
+davg(in_series *is) {
+    return (is->e == 0) ? 0 : dsum(is)/is->e;
 }
 
-/* Annual average--if an array represents a period of more
- * than one year, get the annualized average */
+double /* Annualized avereage of series */
+davg_yr(in_series *is, U16 period) {
+    return (period == 0) ? 0 : (4.0/period)*davg(is);
+}
+
+/* Given a function 'fn' that computes a metric, iterate over the periods
+ * in the input series and call that function. When fn returns UNS or 0,
+ * we stop iterating. Return the average of the series of computed
+ * metrics. If fn never returns anything but UNS or 0, the metric remains
+ * unset. */
+void
+set_metric_avg(metric *met, financials *f, metrics *m,
+               double(*fn)(financials *, metrics *, U16)) {
+    in_series is;
+    memset(&is, 0, sizeof is);
+    for (int i = 0; i < MAX_PERIODS; ++i) {
+        double s = (*fn)(f, m, i);
+        if (s == UNS)
+            break;
+        is.v[is.e++] = s;
+    }
+    if (!IE(is)) return;
+    MSET((*met), davg_yr(&is, f->period), QTR(f,is));
+}
+
 double
-davg_yr(double a[], U16 n, U16 period) {
-    return (4.0/period)*davg(a, n);
+ebitda(financials *f, metrics *m, U16 i) {
+    if (IE(f->ebitda) > i)
+        return IV(f->ebitda, i);
+    if (IE(f->ebit) > i && IE(f->d_and_a) > i)
+        return IV(f->ebit, i) + IV(f->d_and_a, i);
+    return UNS;
+}
+
+double
+ebitda_minus_capex(financials *f, metrics *m, U16 i) {
+    if (IE(f->ebitda) > i && IE(f->capex) > i)
+        return IV(f->ebitda, i) - IV(f->capex, i);
+    if (IE(f->ebit) > i && IE(f->d_and_a) > i && IE(f->capex) > i)
+        return IV(f->ebit, i) + IV(f->d_and_a, i) - IV(f->capex, i);
+    return UNS;
+}
+
+double
+p_to_e(financials *f, metrics *m, U16 i) {
+    if (IE(f->earn_ps) > i && !ZERO(f->price))
+        return f->price/IV(f->earn_ps, i);
+    if (IE(f->earn) > i && !ZERO(f->mktcap))
+        return f->mktcap/IV(f->earn, i);
+    return UNS;
+}
+
+double
+div_yield(financials *f, metrics *m, U16 i) {
+    if (!ZERO(f->mktcap) && IE(f->div) > i)
+        return IV(f->div, i)/f->mktcap;
+    if (!ZERO(f->price) && IE(f->div_ps) > i)
+        return IV(f->div_ps, i)/f->price;
+    return UNS;
+}
+
+double
+div_cover(financials *f, metrics *m, U16 i) {
+    if (IE(f->earn) > i && IE(f->div) > i) {
+        if (IV(f->div, i) == 0)
+            return 1;
+        return IV(f->earn, i)/IV(f->div, i);
+    }
+    if (IE(f->earn_ps) > i && IE(f->div_ps) > i) {
+        if (IV(f->div_ps, i) == 0)
+            return 1;
+        return IV(f->earn_ps, i)/IV(f->div_ps, i);
+    }
+    return UNS;
+}
+
+double
+book(financials *f, metrics *m, U16 i) {
+    if (IE(f->assets) > i && IE(f->intangibles) > i &&
+        IE(f->goodwill) > i && IE(f->liabilities) > i) {
+        return IV(f->assets, i) - IV(f->intangibles, i) - IV(f->goodwill, i) -
+               IV(f->liabilities, i);
+    }
+    return UNS;
+}
+
+double
+roc(financials *f, metrics *m, U16 i) {
+    if (IE(f->ebit) > i && IE(f->cash) > i &&
+        IE(f->stdebt) > i && IE(f->ltdebt) > i &&
+        book(f, m, i) != UNS) {
+        double debt = IV(f->stdebt, i) + IV(f->ltdebt, i);
+        double equity = book(f, m, i);
+        return IV(f->ebit, i)/(debt + equity - IV(f->cash, i));
+    }
+    return UNS;
+}
+
+double
+roe(financials *f, metrics *m, U16 i) {
+    if (IE(f->earn) > i && book(f, m, i) != UNS)
+        return IV(f->earn, i)/book(f, m, i);
+    return UNS;
 }
 
 void
-compute_metrics(struct financials *f, struct metrics *m) {
+compute_metrics(financials *f, metrics *m) {
     /* EV */
-    if (DSET(f->mktcap) && DSET(f->stdebt) && DSET(f->ltdebt) &&
-        DSET(f->minority_int) && DSET(f->cash))
-        m->ev = f->mktcap + f->stdebt + f->ltdebt + f->minority_int - f->cash;
+    if (!ZERO(f->mktcap) && IE(f->stdebt) && IE(f->ltdebt) &&
+        IE(f->minority_int) && IE(f->cash))
+        m->ev = f->mktcap + IV(f->stdebt, 0) + IV(f->ltdebt, 0) +
+                IV(f->minority_int, 0) - IV(f->cash, 0);
+
+    /* earnings */
+    if (IE(f->earn) && f->period)
+        MSET(m->earnings, davg(&(f->earn)), QTR(f, f->earn));
 
     /* EBITDA */
-    if (f->op_profit_entries && f->depreciation_entries &&
-        f->amortization_entries && f->period) {
-        m->ebitda = davg_yr(f->op_profit, f->op_profit_entries, f->period) +
-                    davg_yr(f->depreciation, f->depreciation_entries, f->period) +
-                    davg_yr(f->amortization, f->amortization_entries, f->period);
-        m->ebitda_q = f->period*MIN(f->op_profit_entries, MIN(f->depreciation_entries,
-                                                              f->amortization_entries));
-    }
-    if (f->ebitda_entries && f->period) {
-        m->ebitda = davg_yr(f->ebitda, f->ebitda_entries, f->period);
-        m->ebitda_q = f->period*f->ebitda_entries;
-    }
+    set_metric_avg(&(m->ebitda), f, m, ebitda);
+
+    /* EBITDA - capex */
+    /* P/(EBITDA-capex) */
+    set_metric_avg(&(m->emc), f, m, ebitda_minus_capex);
+    if (!MBLANK(m->emc) && !ZERO(f->mktcap))
+        MSET(m->p_to_emc, f->mktcap/MV(m->emc), MQ(m->emc));
+
+    /* CFO */
+    /* P/CFO */
+    if (IE(f->cfo) && f->period)
+        MSET(m->cfo, davg(&(f->cfo)), QTR(f, f->cfo));
+    if (!MBLANK(m->cfo) && !ZERO(f->mktcap))
+        MSET(m->p_to_cfo, f->mktcap/MV(m->cfo), MQ(m->cfo));
 
     /* EV/EBITDA */
-    if (DSET(m->ev) && DSET(m->ebitda)) {
-        m->ev_to_ebitda = m->ev/m->ebitda;
-        m->ev_to_ebitda_q = m->ebitda_q;
-    }
+    if (!MBLANK(m->ebitda) && m->ev)
+        MSET(m->ev_to_ebitda, m->ev/MV(m->ebitda), QTR(f,f->ebitda));
 
     /* P/E */
-    if (DSET(f->mktcap) && f->earn_entries && f->period) {
-        m->p_to_e = f->mktcap/davg_yr(f->earn, f->earn_entries, f->period);
-        m->p_to_e_q = f->period*f->earn_entries;
-    }
-    if (DSET(f->price) && f->earn_ps_entries) {
-        m->p_to_e = f->price/davg_yr(f->earn_ps, f->earn_ps_entries, f->period);
-        m->p_to_e_q = f->period*f->earn_ps_entries;
-    }
+    set_metric_avg(&(m->p_to_e), f, m, p_to_e);
 
     /* P/B */
-    if (DSET(f->mktcap) && DSET(f->assets) && DSET(f->intangibles) &&
-        DSET(f->goodwill) && DSET(f->liabilities)) {
-        double b = f->assets - f->intangibles - f->goodwill - f->liabilities;
-        m->p_to_b = f->mktcap/b;
-    }
+    if (IE(f->assets) && IE(f->intangibles) && IE(f->goodwill) && IE(f->liabilities))
+        MSET(m->book, IV0(f->assets) - IV0(f->goodwill) - IV0(f->intangibles) -
+                      IV0(f->liabilities), 0);
+    if (!ZERO(f->mktcap) && !MBLANK(m->book))
+        MSET(m->p_to_b, f->mktcap/MV(m->book), 0);
 
     /* P/C */
-    if (DSET(f->mktcap) && DSET(f->cash))
-        m->p_to_c = f->mktcap/f->cash;
+    if (!ZERO(f->mktcap) && IE(f->cash))
+        MSET(m->p_to_c, f->mktcap/IV0(f->cash), 0);
 
     /* Dividend yield */
-    if (DSET(f->mktcap) && f->div_entries && f->period) {
-        m->div_yield = davg_yr(f->div, f->div_entries, f->period)/f->mktcap;
-        m->div_yield_q = f->period*f->div_entries;
-    }
-    if (DSET(f->price) && f->div_ps_entries && f->period) {
-        m->div_yield = davg_yr(f->div_ps, f->div_ps_entries, f->period)/f->price;
-        m->div_yield_q = f->period*f->div_ps_entries;
-    }
+    set_metric_avg(&(m->div_yield), f, m, div_yield);
 
     /* Dividend coverage */
-    if (f->earn_entries && f->div_entries) {
-        m->div_cover = 1;
-        int n = MIN(f->earn_entries, f->div_entries);
-        if (dsum(f->div, n) > 0)
-            m->div_cover = dsum(f->earn, n)/dsum(f->div, n);
-        m->div_cover_q = MIN(m->p_to_e_q, m->div_yield_q);
-    }
-    if (f->earn_ps_entries && f->div_ps_entries) {
-        m->div_cover = 1;
-        int n = MIN(f->earn_ps_entries, f->div_ps_entries);
-        if (dsum(f->div_ps, n) > 0)
-            m->div_cover = dsum(f->earn_ps, n)/dsum(f->div_ps, n);
-        m->div_cover_q = MIN(m->p_to_e_q, m->div_yield_q);
-    }
+    set_metric_avg(&(m->div_cover), f, m, div_cover);
     // XXX TODO: Make this payout coverage?
 
+    /* Return on capital */
+    set_metric_avg(&(m->roc), f, m, roc);
+
+    /* Return on equity */
+    set_metric_avg(&(m->roe), f, m, roe);
+
     /* Current ratio */
-    if (DSET(f->curr_assets) && DSET(f->curr_liabilities))
-        m->current = f->curr_assets/f->curr_liabilities;
+    if (IE(f->curr_assets) && IE(f->curr_liabilities))
+        MSET(m->current, IV0(f->curr_assets)/IV0(f->curr_liabilities), 0);
 
     /* Quick ratio */
-    if (DSET(f->curr_assets) && DSET(f->curr_liabilities) &&
-        DSET(f->inventories))
-        m->quick = (f->curr_assets - f->inventories)/f->curr_liabilities;
+    if (IE(f->curr_assets) && IE(f->curr_liabilities) && IE(f->inventories))
+        MSET(m->quick,
+             (IV0(f->curr_assets) - IV0(f->inventories))/IV0(f->curr_liabilities),
+             0);
 
+    /* L/E */
     /* D/E */
-    if (DSET(f->liabilities) && DSET(f->assets) &&
-        DSET(f->intangibles) && DSET(f->goodwill)) {
-        double eq = f->assets - f->intangibles - f->goodwill - f->liabilities;
-        m->d_to_e = f->liabilities/eq;
-    }
+    if (IE(f->liabilities) && !MBLANK(m->book))
+        MSET(m->l_to_e, IV0(f->liabilities)/MV(m->book), 0);
+    if (IE(f->stdebt) && IE(f->ltdebt) && !MBLANK(m->book))
+        MSET(m->d_to_e, (IV0(f->stdebt) + IV0(f->ltdebt))/MV(m->book), 0);
 
     /* D/EBITDA */
-    if (DSET(f->liabilities) && DSET(m->ebitda)) {
-        m->d_to_ebitda = f->liabilities/m->ebitda;
-        m->d_to_ebitda_q = m->ebitda_q;
-    }
-
-    /* STD/E */
-    if (DSET(f->stdebt) && DSET(f->assets) &&
-        DSET(f->intangibles) && DSET(f->goodwill)) {
-        double eq = f->assets - f->intangibles - f->goodwill - f->liabilities;
-        m->std_to_e = f->stdebt/eq;
-    }
-
-    /* LTD/E */
-    if (DSET(f->ltdebt) && DSET(f->assets) &&
-        DSET(f->intangibles) && DSET(f->goodwill)) {
-        double eq = f->assets - f->intangibles - f->goodwill - f->liabilities;
-        m->ltd_to_e = f->ltdebt/eq;
-    }
+    if (IE(f->liabilities) && !MBLANK(m->ebitda))
+        MSET(m->l_to_ebitda, IV0(f->liabilities)/MV(m->ebitda), MQ(m->ebitda));
 
     /* STD/D */
     /* LTD/D */
-    if (DSET(f->stdebt) && DSET(f->ltdebt)) {
-        m->std_to_d = f->stdebt/(f->stdebt + f->ltdebt);
-        m->ltd_to_d = f->ltdebt/(f->stdebt + f->ltdebt);
+    if (IE(f->stdebt) && IE(f->ltdebt)) {
+        MSET(m->std_to_d, IV0(f->stdebt)/(IV0(f->stdebt) + IV0(f->ltdebt)), 0);
+        MSET(m->ltd_to_d, IV0(f->ltdebt)/(IV0(f->stdebt) + IV0(f->ltdebt)), 0);
     }
 }
 
 void
-show_fundamentals(struct financials *f, struct metrics *m) {
+print_str(char *name, char *str, U16 quarters) {
+    if (!strlen(str)) return;
+    if (quarters)
+        printf("%-25s%-20s%uQ\n", name, str, quarters);
+    else
+        printf("%-25s%-20s\n", name, str);
+}
+
+void
+print_money(char *name, metric m) {
     char buf[MAX_STRLEN+1];
+    buf[0] = '$';
+    strcpy(buf, "$");
+    if (MBLANK(m) || dtomstr(MV(m), &(buf[1]))) return;
+    print_str(name, buf, MQ(m));
+}
+
+void
+print_ratio(char *name, metric m) {
+    if (MBLANK(m)) return;
+    if (!MQ(m))
+        printf("%-25s%-20.3f\n", name, MV(m));
+    else
+        printf("%-25s%-20.3f%uQ\n", name, MV(m), MQ(m));
+}
+
+void
+show_fundamentals(financials *f, metrics *m) {
     printf("\n");
 
-    // XXX TODO: return on capital, return on equity (NOTE: this is tricky because it also requires capital over time)
-    //  - should I just give all balance sheet figures a notion of time, too?
-    //  - maybe use a struct avdbl{double v; U16 q;}; and macros V(x) (x->v) and Q(x) (x->q)
-    //  - put all metrics through the same treatment to get string
-    //      - i.e., create a print_metric(name,avdbl) function that does all the printing junk
-    // XXX TODO: operating cash flow, EBITDA, net income, EBITDA-capex
-    if (strlen(f->name))
-        printf("%-25s%-20s\n", "Company", f->name);
-    if (strlen(f->mktcap_str))
-        printf("%-25s$%-20s\n", "Market cap", f->mktcap_str);
-    if (DSET(m->ev) && !dtomstr(m->ev, buf))
-        printf("%-25s$%-20s\n", "EV", buf);
-    if (DSET(m->ebitda) && !dtomstr(m->ebitda, buf))
-        printf("%-25s$%-19s%uQ\n", "EBITDA", buf, m->ebitda_q);
-    if (DSET(m->ev) && DSET(m->ebitda))
-        printf("%-25s%-20.3f%uQ\n", "EV/EBITDA",
-               m->ev_to_ebitda, m->ev_to_ebitda_q);
-    if (DSET(m->p_to_e))
-        printf("%-25s%-20.3f%uQ\n", "P/E",
-               m->p_to_e, m->p_to_e_q);
-    if (DSET(m->p_to_b))
-        printf("%-25s%-20.3f\n", "P/B", m->p_to_b);
-    if (DSET(m->p_to_c))
-        printf("%-25s%-20.3f\n", "P/C", m->p_to_c);
-    if (DSET(m->div_yield))
-        printf("%-25s%-20.3f%uQ\n", "Dividend yield",
-               m->div_yield, m->div_yield_q);
-    if (DSET(m->div_cover))
-        printf("%-25s%-20.3f%uQ\n", "Dividend coverage",
-               m->div_cover, m->div_cover_q);
-    if (DSET(m->current))
-        printf("%-25s%-20.3f\n", "Current ratio", m->current);
-    if (DSET(m->quick))
-        printf("%-25s%-20.3f\n", "Quick ratio", m->quick);
-    if (DSET(m->d_to_e))
-        printf("%-25s%-20.3f\n", "D/E", m->d_to_e);
-    if (DSET(m->d_to_ebitda))
-        printf("%-25s%-20.3f%uQ\n", "D/EBITDA",
-               m->d_to_ebitda, m->d_to_ebitda_q);
-    if (DSET(m->std_to_e))
-        printf("%-25s%-20.3f\n", "STD/E", m->std_to_e);
-    if (DSET(m->ltd_to_e))
-        printf("%-25s%-20.3f\n", "LTD/E", m->ltd_to_e);
-    if (DSET(m->std_to_d))
-        printf("%-25s%-20.3f\n", "STD/D", m->std_to_d);
-    if (DSET(m->ltd_to_d))
-        printf("%-25s%-20.3f\n", "LTD/D", m->ltd_to_d);
+    print_str("Company", f->name, 0);
+    metric mktcap = {mstrtod(f->mktcap_str), 0};
+    print_money("Market cap", mktcap);
+    metric ev = {m->ev, 0};
+    print_money("EV", ev);
+    print_money("EBITDA", m->ebitda);
+    print_money("Earnings", m->earnings);
+    print_money("EMC", m->emc);
+    print_money("CFO", m->cfo);
+    print_ratio("EV/EBITDA", m->ev_to_ebitda);
+    print_ratio("P/E", m->p_to_e);
+    print_ratio("P/EMC", m->p_to_emc);
+    print_ratio("P/CFO", m->p_to_cfo);
+    print_ratio("P/B", m->p_to_b);
+    print_ratio("P/C", m->p_to_c);
+    print_ratio("Dividend yield", m->div_yield);
+    print_ratio("Dividend coverage", m->div_cover);
+    print_ratio("ROC", m->roc);
+    print_ratio("ROE", m->roe);
+    print_ratio("Current ratio", m->current);
+    print_ratio("Quick ratio", m->quick);
+    print_ratio("L/E", m->l_to_e);
+    print_ratio("D/E", m->d_to_e);
+    print_ratio("D/EBITDA", m->l_to_ebitda);
+    print_ratio("STD/D", m->std_to_d);
+    print_ratio("LTD/D", m->ltd_to_d);
 
     printf("\n");
+}
+
+void
+init(financials *f, metrics *m) {
+    memset(f, 0, sizeof(financials));
+    memset(m, 0, sizeof(metrics));
 }
 
 int
 main(int argc, char **argv) {
-    struct financials financials = {"", "", UNS, UNS, 0, {}, 0, {}, 0, {}, 0,
-                                    {}, 0, {}, 0, {}, 0, {}, 0, {}, 0, UNS, UNS,
-                                    UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS, UNS};
-    struct metrics metrics = {UNS, UNS, 0, UNS, 0, UNS, 0, UNS, UNS, UNS, 0, UNS,
-                              0, UNS, UNS, UNS, UNS, 0, UNS, UNS, UNS, UNS};
-    argp_parse(&argp, argc, argv, 0, 0, &financials);
-    check_args(&financials);
-    compute_metrics(&financials, &metrics);
-    show_fundamentals(&financials, &metrics);
+    financials f;
+    metrics m;
+
+    init(&f, &m);
+    argp_parse(&argp, argc, argv, 0, 0, &f);
+    check_args(&f);
+    compute_metrics(&f, &m);
+    show_fundamentals(&f, &m);
 }
