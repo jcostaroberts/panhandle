@@ -36,8 +36,8 @@ static struct argp_option options[] = {
     {"div", 'D', "NUM", 0, "Dividend"},
     {"div-ps", 'd', "NUM", 0, "Dividend per share"},
     {"reporting-period", 'q', "NUM 1-4", 0, "Reporting period"},
-    {"earn", 'e', "NUM", 0, "One period of earnings"},
-    {"earn-ps", 'E', "NUM", 0, "One period of per-share earnings"},
+    {"earn-ps", 'e', "NUM", 0, "One period of earnings"},
+    {"earn", 'E', "NUM", 0, "One period of per-share earnings"},
     {"assets", 'A', "NUM", 0, "Assets"},
     {"current-assets", 'a', "NUM", 0, "Current assets"},
     {"intangibles", 'i', "NUM", 0, "Intangibles"},
@@ -54,6 +54,7 @@ static struct argp_option options[] = {
     {"ebit", 'B', "NUM", 0, "EBIT/Operating profit"},
     {"d-and-a", 'r', "NUM", 0, "Depreciation and amortization"},
     {"capex", 'x', "NUM", 0, "Capital expenditure"},
+    {"tax", 'X', "NUM", 0, "Cash taxes"},
     {0}
 };
 
@@ -88,6 +89,7 @@ typedef struct financials {
     in_series inventories;
     in_series cash;
     in_series minority_int;
+    in_series tax;
 } financials;
 
 typedef struct metric_dbl {
@@ -100,11 +102,11 @@ typedef struct metrics {
     double ev;
     metric earnings;
     metric ebitda;
-    metric emc; // EBITDA minus capex
+    metric fcf; // EBITDA minus capex minus tax
     metric cfo; // Cash flow from operating activities
     metric ev_to_ebitda;
     metric p_to_e;
-    metric p_to_emc;
+    metric p_to_fcf;
     metric p_to_cfo;
     metric book;
     metric p_to_b;
@@ -248,6 +250,9 @@ parse_opt(int key, char *arg, struct argp_state *state) {
         case 'x':
             ISET(f->capex, mstrtod(arg));
             break;
+        case 'X':
+            ISET(f->tax, mstrtod(arg));
+            break;
         case 'm':
             ISET(f->minority_int, mstrtod(arg));
             break;
@@ -329,11 +334,13 @@ ebitda(financials *f, metrics *m, U16 i) {
 }
 
 double
-ebitda_minus_capex(financials *f, metrics *m, U16 i) {
-    if (IE(f->ebitda) > i && IE(f->capex) > i)
-        return IV(f->ebitda, i) - IV(f->capex, i);
-    if (IE(f->ebit) > i && IE(f->d_and_a) > i && IE(f->capex) > i)
-        return IV(f->ebit, i) + IV(f->d_and_a, i) - IV(f->capex, i);
+fcf(financials *f, metrics *m, U16 i) {
+    if (IE(f->ebitda) > i && IE(f->capex) > i && IE(f->tax) > i)
+        return IV(f->ebitda, i) - IV(f->capex, i) - IV(f->tax, i);
+    if (IE(f->ebit) > i && IE(f->d_and_a) > i && IE(f->capex) > i &&
+        IE(f->tax) > i)
+        return IV(f->ebit, i) + IV(f->d_and_a, i) - IV(f->capex, i) -
+               IV(f->tax, i);
     return UNS;
 }
 
@@ -416,9 +423,9 @@ compute_metrics(financials *f, metrics *m) {
 
     /* EBITDA - capex */
     /* P/(EBITDA-capex) */
-    set_metric_avg(&(m->emc), f, m, ebitda_minus_capex);
-    if (!MBLANK(m->emc) && !ZERO(f->mktcap))
-        MSET(m->p_to_emc, f->mktcap/MV(m->emc), MQ(m->emc));
+    set_metric_avg(&(m->fcf), f, m, fcf);
+    if (!MBLANK(m->fcf) && !ZERO(f->mktcap))
+        MSET(m->p_to_fcf, f->mktcap/MV(m->fcf), MQ(m->fcf));
 
     /* CFO */
     /* P/CFO */
@@ -432,7 +439,12 @@ compute_metrics(financials *f, metrics *m) {
         MSET(m->ev_to_ebitda, m->ev/MV(m->ebitda), QTR(f,f->ebitda));
 
     /* P/E */
-    set_metric_avg(&(m->p_to_e), f, m, p_to_e);
+    // XXX TODO: if earnings are -0.26, 0.85, 1.04, and price is 3.80, P/E will be negative
+    if (!ZERO(f->price) && IE(f->earn_ps) && f->period)
+        MSET(m->p_to_e, f->price/davg_yr(&(f->earn_ps), f->period), QTR(f, f->earn_ps));
+    if (!ZERO(f->mktcap) && IE(f->earn) && f->period)
+        MSET(m->p_to_e, f->mktcap/davg_yr(&(f->earn), f->period), QTR(f, f->earn));
+    //set_metric_avg(&(m->p_to_e), f, m, p_to_e);
 
     /* P/B */
     if (IE(f->assets) && IE(f->intangibles) && IE(f->goodwill) && IE(f->liabilities))
@@ -525,11 +537,11 @@ show_fundamentals(financials *f, metrics *m) {
     print_money("EV", ev);
     print_money("EBITDA", m->ebitda);
     print_money("Earnings", m->earnings);
-    print_money("EMC", m->emc);
+    print_money("FCF", m->fcf);
     print_money("CFO", m->cfo);
     print_ratio("EV/EBITDA", m->ev_to_ebitda);
     print_ratio("P/E", m->p_to_e);
-    print_ratio("P/EMC", m->p_to_emc);
+    print_ratio("P/FCF", m->p_to_fcf);
     print_ratio("P/CFO", m->p_to_cfo);
     print_ratio("P/B", m->p_to_b);
     print_ratio("P/C", m->p_to_c);
