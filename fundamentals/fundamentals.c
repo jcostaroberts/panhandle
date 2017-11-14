@@ -35,6 +35,8 @@
  * To add a new input: (1) add a flag to the argp_option array; (2) add
  * a field to the financials struct; (3) parse the option in parse_opt; */
 
+// TODO: ADD MARGINS
+
 static struct argp_option options[] = {
     {"name", 'n', "NAME", 0, "Company name"},
     {"mktcap", 'P', "NUM", 0,  "Market cap"},
@@ -353,7 +355,6 @@ set_p_to_e(financials *f, metrics *m) {
     if (IE(f->earn_ps) && !ZERO(f->price)) {
         pe = f->price/davg_yr(&(f->earn_ps), f->period);
         q = QTR(f, f->earn_ps);
-        printf("\nprice=%f, earn=%f, P/E=%f\n\n", f->price, davg_yr(&(f->earn_ps), f->period), pe);
     }
     if (IE(f->earn) && !ZERO(f->mktcap)) {
         printf("FUFF\n");
@@ -515,8 +516,8 @@ compute_metrics(financials *f, metrics *m) {
         MSET(m->d_to_e, (IV0(f->stdebt) + IV0(f->ltdebt))/MV(m->book), 0);
 
     /* D/EBITDA */
-    if (IE(f->liabilities) && !MBLANK(m->ebitda))
-        MSET(m->l_to_ebitda, IV0(f->liabilities)/MV(m->ebitda), MQ(m->ebitda));
+    if (IE(f->stdebt) && IE(f->ltdebt) && !MBLANK(m->ebitda))
+        MSET(m->l_to_ebitda, (IV0(f->stdebt)+IV0(f->ltdebt))/MV(m->ebitda), MQ(m->ebitda));
 
     /* STD/D */
     /* LTD/D */
@@ -558,9 +559,9 @@ show_fundamentals(financials *f, metrics *m) {
     printf("\n");
 
     print_str("Company", f->name, 0);
-    metric mktcap = {mstrtod(f->mktcap_str), 0};
+    metric mktcap = {mstrtod(f->mktcap_str), 0, 1};
     print_money("Market cap", mktcap);
-    metric ev = {m->ev, 0};
+    metric ev = {m->ev, 0, 1};
     print_money("EV", ev);
     print_money("EBITDA", m->ebitda);
     print_money("Earnings", m->earnings);
