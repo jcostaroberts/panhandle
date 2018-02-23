@@ -1,0 +1,26 @@
+# Use this file as a template for creating datafiles.
+
+# Company: 
+unit 
+
+earnings 
+d_and_a
+capex 
+change_inv 
+change_ar 
+change_ap 
+principal_repaid 
+interest_expense 
+
+beta 
+default_spread 
+tax_rate 
+equity 
+book 
+debt 
+
+mktcap 
+cash 
+shares 
+
+dividend 
