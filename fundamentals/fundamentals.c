@@ -23,11 +23,19 @@
 #define MQ(x) ((x).q)
 #define MBLANK(x) ((x).set == 0)
 
+/* macros for getting the minimum duration of a series of values */
+#define MIN(A,B) (A < B ? B : A)
+#define MINQTR2(P,A,B) (P*MIN(IE(A),IE(B)))
+#define MINQTR3(P,A,B,C) (MIN(P*IE(A),MINQTR2(P,B,C)))
+#define MINQTR4(P,A,B,C,D) (MIN(MINQTR2(P,A,B),MINQTR2(P,C,D)))
+
 /* To add a new metric: (1) add a field to the metrics struct; (2) add
  * the computation to compute_metrics; (3) add the metric to the show routine.
  *
  * To add a new input: (1) add a flag to the argp_option array; (2) add
  * a field to the financials struct; (3) parse the option in parse_opt; */
+
+// TODO: ADD MARGINS
 
 static struct argp_option options[] = {
     {"name", 'n', "NAME", 0, "Company name"},
@@ -299,111 +307,133 @@ davg(in_series *is) {
     return (is->e == 0) ? 0 : dsum(is)/is->e;
 }
 
-double /* Annualized avereage of series */
+// TODO: In the set_* function we should use q to only take davg_yr
+// for the right period
+double /* Annualized average of series */
 davg_yr(in_series *is, U16 period) {
     return (period == 0) ? 0 : (4.0/period)*davg(is);
 }
 
-/* Given a function 'fn' that computes a metric, iterate over the periods
- * in the input series and call that function. When fn returns UNS or 0,
- * we stop iterating. Return the average of the series of computed
- * metrics. If fn never returns anything but UNS or 0, the metric remains
- * unset. */
 void
-set_metric_avg(metric *met, financials *f, metrics *m,
-               double(*fn)(financials *, metrics *, U16)) {
-    in_series is;
-    memset(&is, 0, sizeof is);
-    for (int i = 0; i < MAX_PERIODS; ++i) {
-        double s = (*fn)(f, m, i);
-        if (s == UNS)
-            break;
-        is.v[is.e++] = s;
+set_ebitda(financials *f, metrics *m) {
+    U16 q = 0;
+    double ebitda = 0.0;
+    if (IE(f->ebit) && IE(f->d_and_a)) {
+        ebitda = davg_yr(&(f->ebit), f->period) + davg_yr(&(f->d_and_a), f->period);
+        q = MINQTR2(f->period, f->ebit, f->d_and_a);
     }
-    if (!IE(is)) return;
-    MSET((*met), davg_yr(&is, f->period), QTR(f,is));
-}
-
-double
-ebitda(financials *f, metrics *m, U16 i) {
-    if (IE(f->ebitda) > i)
-        return IV(f->ebitda, i);
-    if (IE(f->ebit) > i && IE(f->d_and_a) > i)
-        return IV(f->ebit, i) + IV(f->d_and_a, i);
-    return UNS;
-}
-
-double
-fcf(financials *f, metrics *m, U16 i) {
-    if (IE(f->ebitda) > i && IE(f->capex) > i && IE(f->tax) > i)
-        return IV(f->ebitda, i) - IV(f->capex, i) - IV(f->tax, i);
-    if (IE(f->ebit) > i && IE(f->d_and_a) > i && IE(f->capex) > i &&
-        IE(f->tax) > i)
-        return IV(f->ebit, i) + IV(f->d_and_a, i) - IV(f->capex, i) -
-               IV(f->tax, i);
-    return UNS;
-}
-
-double
-p_to_e(financials *f, metrics *m, U16 i) {
-    if (IE(f->earn_ps) > i && !ZERO(f->price))
-        return f->price/IV(f->earn_ps, i);
-    if (IE(f->earn) > i && !ZERO(f->mktcap))
-        return f->mktcap/IV(f->earn, i);
-    return UNS;
-}
-
-double
-div_yield(financials *f, metrics *m, U16 i) {
-    if (!ZERO(f->mktcap) && IE(f->div) > i)
-        return IV(f->div, i)/f->mktcap;
-    if (!ZERO(f->price) && IE(f->div_ps) > i)
-        return IV(f->div_ps, i)/f->price;
-    return UNS;
-}
-
-double
-div_cover(financials *f, metrics *m, U16 i) {
-    if (IE(f->earn) > i && IE(f->div) > i) {
-        if (IV(f->div, i) == 0)
-            return 1;
-        return IV(f->earn, i)/IV(f->div, i);
+    if (IE(f->ebitda)) {
+        ebitda = davg_yr(&(f->ebitda), f->period);
+        q = QTR(f, f->ebitda);
     }
-    if (IE(f->earn_ps) > i && IE(f->div_ps) > i) {
-        if (IV(f->div_ps, i) == 0)
-            return 1;
-        return IV(f->earn_ps, i)/IV(f->div_ps, i);
+    if (q == 0) return;
+    MSET(m->ebitda, ebitda, q);
+}
+
+void
+set_fcf(financials *f, metrics *m) {
+    U16 q = 0;
+    double fcf = 0.0;
+    if (IE(f->ebitda) && IE(f->capex) && IE(f->tax)) {
+        fcf = davg_yr(&(f->ebitda), f->period) - davg_yr(&(f->capex), f->period) -
+              davg_yr(&(f->tax), f->period);
+        q = MINQTR3(f->period, f->ebitda, f->capex, f->tax);
+    }
+    if (IE(f->ebit) && IE(f->d_and_a) && IE(f->capex) && IE(f->tax)) {
+        fcf = davg_yr(&(f->ebit), f->period) + davg_yr(&(f->d_and_a), f->period) -
+              davg_yr(&(f->capex), f->period) + davg_yr(&(f->tax), f->period);
+        q = MINQTR4(f->period, f->ebit, f->d_and_a, f->capex, f->tax);
+    }
+    if (q == 0) return;
+    MSET(m->fcf, fcf, q);
+}
+
+void
+set_p_to_e(financials *f, metrics *m) {
+    U16 q = 0;
+    double pe = 0.0;
+    if (IE(f->earn_ps) && !ZERO(f->price)) {
+        pe = f->price/davg_yr(&(f->earn_ps), f->period);
+        q = QTR(f, f->earn_ps);
+    }
+    if (IE(f->earn) && !ZERO(f->mktcap)) {
+        printf("FUFF\n");
+        pe = f->mktcap/davg_yr(&(f->earn), f->period);
+        q = QTR(f, f->earn);
+    }
+    if (q == 0) return;
+    MSET(m->p_to_e, pe, q);
+}
+
+void
+set_div_yield(financials *f, metrics *m) {
+    U16 q = 0;
+    double dy = 0.0;
+    if (!ZERO(f->mktcap) && IE(f->div)) {
+        dy = davg_yr(&(f->div), f->period)/f->mktcap;
+        q = QTR(f, f->div);
+    }
+    if (!ZERO(f->price) && IE(f->div_ps)) {
+        dy = davg_yr(&(f->div_ps), f->period)/f->price;
+        q = QTR(f, f->div_ps);
+    }
+    if (q == 0) return;
+    MSET(m->div_yield, dy, q);
+}
+
+void
+set_div_cover(financials *f, metrics *m) {
+    U16 q = 0;
+    double dc = 0.0;
+    if (IE(f->earn) && IE(f->div)) {
+        if (ZERO(dsum(&(f->div)))) {
+            dc = 1.0;
+        } else {
+            dc = davg_yr(&(f->earn), f->period)/davg_yr(&(f->div), f->period);
+        }
+        q = MINQTR2(f->period, f->earn, f->div);
+    }
+    if (IE(f->earn_ps) && IE(f->div_ps)) {
+        if (ZERO(dsum(&(f->div_ps)))) {
+            dc = 1.0;
+        } else {
+            dc = davg_yr(&(f->earn_ps), f->period)/davg_yr(&(f->div_ps), f->period);
+        }
+        q = MINQTR2(f->period, f->earn_ps, f->div_ps);
+    }
+    if (q == 0) return;
+    MSET(m->div_cover, dc, q);
+}
+
+double
+book(financials *f, metrics *m) {
+    if (IE(f->assets) && IE(f->intangibles) && IE(f->goodwill) &&
+        IE(f->liabilities)) {
+        return IV0(f->assets) - IV0(f->intangibles) - IV0(f->goodwill) -
+               IV0(f->liabilities);
     }
     return UNS;
 }
 
-double
-book(financials *f, metrics *m, U16 i) {
-    if (IE(f->assets) > i && IE(f->intangibles) > i &&
-        IE(f->goodwill) > i && IE(f->liabilities) > i) {
-        return IV(f->assets, i) - IV(f->intangibles, i) - IV(f->goodwill, i) -
-               IV(f->liabilities, i);
+void
+set_roc(financials *f, metrics *m) {
+    if (IE(f->ebit) && IE(f->cash) && IE(f->stdebt) && IE(f->ltdebt) &&
+        book(f, m) != UNS) {
+        double debt = IV0(f->stdebt) + IV0(f->ltdebt);
+        double equity = book(f, m);
+        double roc = davg_yr(&(f->ebit), f->period)/(debt - equity - IV0(f->cash));
+        U16 q = QTR(f, f->ebit);
+        MSET(m->roc, roc, q);
     }
-    return UNS;
 }
 
-double
-roc(financials *f, metrics *m, U16 i) {
-    if (IE(f->ebit) > i && IE(f->cash) > i &&
-        IE(f->stdebt) > i && IE(f->ltdebt) > i &&
-        book(f, m, i) != UNS) {
-        double debt = IV(f->stdebt, i) + IV(f->ltdebt, i);
-        double equity = book(f, m, i);
-        return IV(f->ebit, i)/(debt + equity - IV(f->cash, i));
+void
+set_roe(financials *f, metrics *m) {
+    if (IE(f->earn) && book(f, m) != UNS) {
+        double roe = davg_yr(&(f->earn), f->period)/book(f, m);
+        U16 q = QTR(f, f->earn);
+        MSET(m->roe, roe, q);
     }
-    return UNS;
-}
-
-double
-roe(financials *f, metrics *m, U16 i) {
-    if (IE(f->earn) > i && book(f, m, i) != UNS)
-        return IV(f->earn, i)/book(f, m, i);
-    return UNS;
 }
 
 void
@@ -419,11 +449,11 @@ compute_metrics(financials *f, metrics *m) {
         MSET(m->earnings, davg(&(f->earn)), QTR(f, f->earn));
 
     /* EBITDA */
-    set_metric_avg(&(m->ebitda), f, m, ebitda);
+    set_ebitda(f, m);
 
     /* EBITDA - capex */
     /* P/(EBITDA-capex) */
-    set_metric_avg(&(m->fcf), f, m, fcf);
+    set_fcf(f, m);
     if (!MBLANK(m->fcf) && !ZERO(f->mktcap))
         MSET(m->p_to_fcf, f->mktcap/MV(m->fcf), MQ(m->fcf));
 
@@ -439,12 +469,7 @@ compute_metrics(financials *f, metrics *m) {
         MSET(m->ev_to_ebitda, m->ev/MV(m->ebitda), QTR(f,f->ebitda));
 
     /* P/E */
-    // XXX TODO: if earnings are -0.26, 0.85, 1.04, and price is 3.80, P/E will be negative
-    if (!ZERO(f->price) && IE(f->earn_ps) && f->period)
-        MSET(m->p_to_e, f->price/davg_yr(&(f->earn_ps), f->period), QTR(f, f->earn_ps));
-    if (!ZERO(f->mktcap) && IE(f->earn) && f->period)
-        MSET(m->p_to_e, f->mktcap/davg_yr(&(f->earn), f->period), QTR(f, f->earn));
-    //set_metric_avg(&(m->p_to_e), f, m, p_to_e);
+    set_p_to_e(f, m);
 
     /* P/B */
     if (IE(f->assets) && IE(f->intangibles) && IE(f->goodwill) && IE(f->liabilities))
@@ -458,17 +483,20 @@ compute_metrics(financials *f, metrics *m) {
         MSET(m->p_to_c, f->mktcap/IV0(f->cash), 0);
 
     /* Dividend yield */
-    set_metric_avg(&(m->div_yield), f, m, div_yield);
+    if (!ZERO(f->price) && IE(f->div_ps))
+        MSET(m->div_yield, davg_yr(&(f->div_ps), f->period)/f->price, QTR(f, f->div_ps));
+    if (!ZERO(f->mktcap) && IE(f->div))
+        MSET(m->div_yield, davg_yr(&(f->div), f->period)/f->mktcap, QTR(f, f->div));
 
     /* Dividend coverage */
-    set_metric_avg(&(m->div_cover), f, m, div_cover);
+    set_div_cover(f, m);
     // XXX TODO: Make this payout coverage?
 
     /* Return on capital */
-    set_metric_avg(&(m->roc), f, m, roc);
+    set_roc(f, m);
 
     /* Return on equity */
-    set_metric_avg(&(m->roe), f, m, roe);
+    set_roe(f, m);
 
     /* Current ratio */
     if (IE(f->curr_assets) && IE(f->curr_liabilities))
@@ -488,8 +516,8 @@ compute_metrics(financials *f, metrics *m) {
         MSET(m->d_to_e, (IV0(f->stdebt) + IV0(f->ltdebt))/MV(m->book), 0);
 
     /* D/EBITDA */
-    if (IE(f->liabilities) && !MBLANK(m->ebitda))
-        MSET(m->l_to_ebitda, IV0(f->liabilities)/MV(m->ebitda), MQ(m->ebitda));
+    if (IE(f->stdebt) && IE(f->ltdebt) && !MBLANK(m->ebitda))
+        MSET(m->l_to_ebitda, (IV0(f->stdebt)+IV0(f->ltdebt))/MV(m->ebitda), MQ(m->ebitda));
 
     /* STD/D */
     /* LTD/D */
@@ -531,9 +559,9 @@ show_fundamentals(financials *f, metrics *m) {
     printf("\n");
 
     print_str("Company", f->name, 0);
-    metric mktcap = {mstrtod(f->mktcap_str), 0};
+    metric mktcap = {mstrtod(f->mktcap_str), 0, 1};
     print_money("Market cap", mktcap);
-    metric ev = {m->ev, 0};
+    metric ev = {m->ev, 0, 1};
     print_money("EV", ev);
     print_money("EBITDA", m->ebitda);
     print_money("Earnings", m->earnings);
