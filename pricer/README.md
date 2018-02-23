@@ -13,25 +13,25 @@ Each final valuation is identified by a name, and may be an ensemble valuation, 
 Lines in these modelfiles may take any of the following forms:
 
 ```
-\# weight: How much to weight valuation in ensemble valuation
-\# dcf: Discounted cashflow model
-\# growth: Assumed growth rate
-\# rfr: Risk-free rate, e.g., the 10-year Treasury yield
-\# erp: Equity risk premium
-\# years: Number of years to model
-\# tm: Assumed terminal EV/FCF multiple
+# weight: How much to weight valuation in ensemble valuation
+# dcf: Discounted cashflow model
+# growth: Assumed growth rate
+# rfr: Risk-free rate, e.g., the 10-year Treasury yield
+# erp: Equity risk premium
+# years: Number of years to model
+# tm: Assumed terminal EV/FCF multiple
 VALUATION_ID weight NUMBER dcf growth NUMBER rfr NUMBER erp NUMBER years NUMBER [tm NUMBER]
 
-\# weight: How much to weight valuation in ensemble valuation
-\# ddm: Dividend discount model
-\# growth: Assumed growth rate
-\# discrate: Discount rate
-\# years: Number of years to model
+# weight: How much to weight valuation in ensemble valuation
+# ddm: Dividend discount model
+# growth: Assumed growth rate
+# discrate: Discount rate
+# years: Number of years to model
 VALUATION_ID weight NUMBER ddm growth NUMBER discrate NUMBER years NUMBER
 
-\# weight: How much to weight valuation in ensemble valuation
-\# relative: Valuation based on a multiple of specified metric
-\# multiple: Multiple to apply to the specified metric
+# weight: How much to weight valuation in ensemble valuation
+# relative: Valuation based on a multiple of specified metric
+# multiple: Multiple to apply to the specified metric
 VALUATION_ID weight NUMBER relative [book|earnings|revenue] multiple NUMBER
 ```
 
@@ -55,26 +55,41 @@ METRIC NUMBER
 ...
 METRIC NUMBER
 
-\# METRIC can be any of the following:
-\# beta
-\# book
-\# capex
-\# cash
-\# change_ap (change in accounts payable)
-\# change_ar (change in accounts receivable)
-\# change_inv (change in inventory)
-\# d_and_a (depreciation and amortization)
-\# debt
-\# default_spread
-\# dividend
-\# earnings
-\# equity
-\# interest_expense
-\# mktcap
-\# principal_repaid
-\# revenue
-\# shares
-\# tax_rate
+# METRIC can be any of the following:
+# beta
+# book
+# capex
+# cash
+# change_ap (change in accounts payable)
+# change_ar (change in accounts receivable)
+# change_inv (change in inventory)
+# d_and_a (depreciation and amortization)
+# debt
+# default_spread
+# dividend
+# earnings
+# equity
+# interest_expense
+# mktcap
+# principal_repaid
+# revenue
+# shares
+# tax_rate
+```
+
+### Output:
+
+```
+Valuation: pessimistic
++---------------------------------------------------------------+--------+-------+
+| Method                                                        | Weight | Value |
++---------------------------------------------------------------+--------+-------+
+| dcf (growth=-1.00%, rfr=2.50%, erp=4.50%, years=10, tm=15.00) |  0.60  | 42.34 |
+| ddm (growth=-1.00%, discount=6.00%, years=25)                 |  0.20  | 16.44 |
+| relative (metric=earnings, multiple=13.50)                    |  0.20  | 44.38 |
+| ------------------------------------------------------------- | ------ | ----- |
+| Total                                                         |  1.00  | 34.39 |
++---------------------------------------------------------------+--------+-------+
 ```
 
 ### Adding functionality:
