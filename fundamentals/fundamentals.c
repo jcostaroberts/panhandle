@@ -341,7 +341,7 @@ set_fcf(financials *f, metrics *m) {
     }
     if (IE(f->ebit) && IE(f->d_and_a) && IE(f->capex) && IE(f->tax)) {
         fcf = davg_yr(&(f->ebit), f->period) + davg_yr(&(f->d_and_a), f->period) -
-              davg_yr(&(f->capex), f->period) + davg_yr(&(f->tax), f->period);
+              davg_yr(&(f->capex), f->period) - davg_yr(&(f->tax), f->period);
         q = MINQTR4(f->period, f->ebit, f->d_and_a, f->capex, f->tax);
     }
     if (q == 0) return;
@@ -357,7 +357,6 @@ set_p_to_e(financials *f, metrics *m) {
         q = QTR(f, f->earn_ps);
     }
     if (IE(f->earn) && !ZERO(f->mktcap)) {
-        printf("FUFF\n");
         pe = f->mktcap/davg_yr(&(f->earn), f->period);
         q = QTR(f, f->earn);
     }
