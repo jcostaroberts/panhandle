@@ -41,6 +41,7 @@ static struct argp_option options[] = {
     {"name", 'n', "NAME", 0, "Company name"},
     {"mktcap", 'P', "NUM", 0,  "Market cap"},
     {"price",  'p', "NUM", 0,  "Share price"},
+    {"ev", 'v', "NUM", 0, "Enterprise value"},
     {"div", 'D', "NUM", 0, "Dividend"},
     {"div-ps", 'd', "NUM", 0, "Dividend per share"},
     {"reporting-period", 'q', "NUM 1-4", 0, "Reporting period"},
@@ -76,6 +77,7 @@ typedef struct financials {
     char mktcap_str[MAX_STRLEN+1];
     double price;
     double mktcap;
+    double ev;
     U16 period;
     in_series div_ps;
     in_series div;
@@ -248,6 +250,9 @@ parse_opt(int key, char *arg, struct argp_state *state) {
             break;
         case 'T':
             ISET(f->ltdebt, mstrtod(arg));
+            break;
+        case 'v':
+            f->ev = mstrtod(arg);
             break;
         case 'c':
             ISET(f->cash, mstrtod(arg));
@@ -438,8 +443,10 @@ set_roe(financials *f, metrics *m) {
 void
 compute_metrics(financials *f, metrics *m) {
     /* EV */
-    if (!ZERO(f->mktcap) && IE(f->stdebt) && IE(f->ltdebt) &&
-        IE(f->minority_int) && IE(f->cash))
+    if (!ZERO(f->ev))
+        m->ev = f->ev;
+    else if (!ZERO(f->mktcap) && IE(f->stdebt) && IE(f->ltdebt) &&
+             IE(f->minority_int) && IE(f->cash))
         m->ev = f->mktcap + IV(f->stdebt, 0) + IV(f->ltdebt, 0) +
                 IV(f->minority_int, 0) - IV(f->cash, 0);
 
