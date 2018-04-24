@@ -23,7 +23,7 @@ class Valuation(object):
     def value(self, data):
         raise NotImplementedError
     
-    def notes(self):
+    def notes(self, data):
         raise NotImplementedError
 
 class Dcf(Valuation):
@@ -87,7 +87,7 @@ class Dcf(Valuation):
 
         return iv/shares
 
-    def notes(self):
+    def notes(self, data):
         return "growth=%.2f%%, rfr=%.2f%%, erp=%.2f%%, years=%d, tm=%.2f" % \
                (self.growth*100, self.rfr*100, self.erp*100, int(self.years), self._tm)
 
@@ -108,7 +108,7 @@ class Ddm(Valuation):
             p += dividend*((1+growth)**i)/((1+disc_rate)**i)
         return p
 
-    def notes(self):
+    def notes(self, data):
         return "growth=%.2f%%, discount=%.2f%%, years=%d" % \
                (self.growth*100, self.disc_rate*100, int(self.years))
 
@@ -127,9 +127,29 @@ class Relative(Valuation):
     def _value(self, target_multiple, metric, shares):
         return (metric/shares)*target_multiple
     
-    def notes(self):
+    def notes(self, data):
         return "metric=%s, multiple=%.2f" % (self.metric, self.multiple)
 
+class Graham(Valuation):
+    def __init__(self, growth, rfr, no_growth_pe):
+        Valuation.__init__(self, "graham")
+        self.growth = growth
+        self.rfr = rfr
+        self.no_growth_pe = no_growth_pe
+
+    def value(self, data):
+        check_data(data, "eps", self.method)
+        check_data(data, "mktcap", self.method)
+        check_data(data, "shares", self.method)
+        v = data.metrics["eps"]*(self.no_growth_pe+200*self.growth)
+        return (v*4.4)/(100*self.rfr)
+
+    def notes(self, data):
+        pps = data.metrics["mktcap"]/data.metrics["shares"]
+        implied_growth = (pps*(self.rfr*100)/(4.4*data.metrics["eps"])) - \
+                          (self.no_growth_pe*100)/2.0
+        return "growth=%.2f%%, rfr=%.2f%%, implied growth=%.2f%%" % \
+               (self.growth*100, self.rfr*100, implied_growth)
 
 class EnsembleValuation(object):
     valuation_id = None

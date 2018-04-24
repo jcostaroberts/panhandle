@@ -5,10 +5,11 @@ import ply.yacc as yacc
 import sys
 
 from modellex import tokens
-from pricertypes import Dcf, Ddm, Relative, EnsembleValuation
+from pricertypes import Dcf, Ddm, Graham, Relative, EnsembleValuation
 
 # <valuation_id> weight NUMBER dcf growth NUMBER rfr NUMBER erp NUMBER years NUMBER [tm NUMBER]
 # <valuation_id> weight NUMBER ddm growth NUMBER discrate NUMBER years NUMBER
+# <valuation_id> weight NUMBER graham growth NUMBER rfr NUMBER no_growth_pe NUMBER
 # <valuation_id> weight NUMBER relative [book|earnings|revenue] multiple NUMBER
 
 def range_check(num, m, mn=None, mx=None):
@@ -43,9 +44,9 @@ def p_model(p):
 
 def p_method_dcf(p):
     "method : DCF GROWTH NUMBER RFR NUMBER ERP NUMBER YEARS NUMBER terminal_multiplier"
-    range_check(p[3], "growth", mn=0, mx=1)
-    range_check(p[5], "rfr", mn=0, mx=1)
-    range_check(p[7], "erp", mn=0, mx=1)
+    range_check(p[3], "growth", mn=-1, mx=1)
+    range_check(p[5], "rfr", mn=-1, mx=1)
+    range_check(p[7], "erp", mn=-1, mx=1)
     range_check(p[9], "years", mn=0)
     if p[10]:
         range_check(p[10], "tm", mn=0)
@@ -61,14 +62,20 @@ def p_terminal_multiplier_none(p):
 
 def p_method_ddm(p):
     "method : DDM GROWTH NUMBER DISCRATE NUMBER YEARS NUMBER"
-    range_check(p[3], "growth", mn=0, mx=1)
-    range_check(p[5], "discrate", mn=0, mx=1)
+    range_check(p[3], "growth", mn=-1, mx=1)
+    range_check(p[5], "discrate", mn=-1, mx=1)
     range_check(p[7], "years", mn=0)
     p[0] = Ddm(p[3], p[5], p[7])
 
 def p_method_relative(p):
     "method : RELATIVE metric MULTIPLE NUMBER"
     p[0] = Relative(p[2], p[4])
+
+def p_method_graham(p):
+    "method : GRAHAM GROWTH NUMBER RFR NUMBER NO_GROWTH_PE NUMBER"
+    range_check(p[3], "growth", mn=-1, mx=1)
+    range_check(p[5], "rfr", mn=-1, mx=1)
+    p[0] = Graham(p[3], p[5], p[7])
 
 def p_metric(p):
     """metric : BOOK

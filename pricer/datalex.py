@@ -17,6 +17,7 @@ tokens = (
     "DEFAULT_SPREAD",
     "DIVIDEND",
     "EARNINGS",
+    "EPS",
     "EQUITY",
     "INTEREST_EXPENSE",
     "MKTCAP",
@@ -44,6 +45,7 @@ t_DEBT = r"debt"
 t_DEFAULT_SPREAD = r"default_spread"
 t_DIVIDEND = r"dividend"
 t_EARNINGS = r"earnings"
+t_EPS = r"eps"
 t_EQUITY = r"equity"
 t_INTEREST_EXPENSE = r"interest_expense"
 t_MILLIONS = r"millions"

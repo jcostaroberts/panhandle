@@ -33,6 +33,13 @@ VALUATION_ID weight NUMBER ddm growth NUMBER discrate NUMBER years NUMBER
 # relative: Valuation based on a multiple of specified metric
 # multiple: Multiple to apply to the specified metric
 VALUATION_ID weight NUMBER relative [book|earnings|revenue] multiple NUMBER
+
+# weight: How much to weight valuation in ensemble valuation
+# graham: Graham model
+# growth: Assumed growth rate
+# rfr: Risk-free rate, e.g., the 10-year Treasury yield
+# no_growth_pe: P/E used for no-growth company (Graham uses 8.5)
+VALUATION_ID weight NUMBER graham growth NUMBER rfr NUMBER no_growth_pe NUMBER
 ```
 
 The modelfile for the "pessimistic" valuation described above might look as follows:
@@ -68,6 +75,7 @@ METRIC NUMBER
 # default_spread
 # dividend
 # earnings
+# eps
 # equity
 # interest_expense
 # mktcap

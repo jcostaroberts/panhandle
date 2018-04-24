@@ -42,6 +42,7 @@ def p_dataline(p):
 def p_metric(p):
     """metric : DIVIDEND
               | EARNINGS
+              | EPS
               | D_AND_A
               | CAPEX
               | CHANGE_INV

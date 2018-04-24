@@ -27,7 +27,7 @@ def print_tables(vi):
         map(lambda x: x.value(vi.data), vi.ensemble[en].valuation)
         
         # get weighted valuations
-        vals = map(lambda x: [x.method + " (%s)" % x.notes(), x.weight, x.value(vi.data)],
+        vals = map(lambda x: [x.method + " (%s)" % x.notes(vi.data), x.weight, x.value(vi.data)],
                    vi.ensemble[en].valuation)
         total = sum(map(lambda x: x[1]*x[2], vals))
         map(lambda x: t.add_row(x), vals)
